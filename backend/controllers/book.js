@@ -1,5 +1,7 @@
 const Book = require("../models/Book");
 const fs = require("fs");
+const sharp = require("sharp");
+const path = require("path");
 
 exports.getAllBooks = (req, res, next) => {
   Book.find()
@@ -11,25 +13,47 @@ exports.getAllBooks = (req, res, next) => {
     });
 };
 
-exports.createBook = (req, res, next) => {
-  const bookObject = JSON.parse(req.body.book);
-  delete bookObject._userId;
+exports.createBook = async (req, res, next) => {
+  try {
+    const bookObject = JSON.parse(req.body.book);
+    delete bookObject._userId;
 
-  const book = new Book({
-    ...bookObject,
-    userId: req.auth.userId,
-    imageUrl: `${req.protocol}://${req.get("host")}/images/${req.file.filename}`,
-  });
+    const originalPath = req.file.path;
 
-  book.save()
-    .then(() => {
-      res.status(201).json({
-        message: "Book saved successfully!",
-      });
-    })
-    .catch((error) => {
-      next(error);
+    const filename =
+      path.parse(req.file.filename).name + ".webp";
+
+    const outputPath = path.join("images", filename);
+
+    await sharp(originalPath)
+      .resize({
+        width: 800,
+        height: 1200,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({
+        quality: 80,
+      })
+      .toFile(outputPath);
+
+    fs.unlinkSync(originalPath);
+
+    const book = new Book({
+      ...bookObject,
+      userId: req.auth.userId,
+      imageUrl: `${req.protocol}://${req.get("host")}/images/${filename}`,
     });
+
+    await book.save();
+
+    res.status(201).json({
+      message: "Book saved successfully!",
+    });
+
+  } catch (error) {
+    next(error);
+  }
 };
 
 exports.getOneBook = (req, res, next) => {
